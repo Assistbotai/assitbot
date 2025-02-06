@@ -1,7 +1,5 @@
 flask
 openai
 pyttsx3
-smtplib
-email
-gunicorn
+requests
 
