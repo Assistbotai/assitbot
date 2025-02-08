@@ -1,8 +1,8 @@
-flask
 openai
 pyttsx3
 requests
 gunicorn
+flask
 
 
 
