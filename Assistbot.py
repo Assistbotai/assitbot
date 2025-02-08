@@ -2,88 +2,103 @@ import os
 import openai
 import logging
 import pyttsx3
+import time
+import threading
+import json
 from flask import Flask, request, jsonify
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # Load API Key from Environment Variables
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Email Settings (from Render environment variables)
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = 587
-EMAIL_USERNAME = os.getenv("EMAIL_USERNAME")  # Your email
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")  # Your app password
-
-# Initialize Flask App
+# Flask App Initialization
 app = Flask(__name__)
 
-# Initialize Text-to-Speech
+# Text-to-Speech Setup
 engine = pyttsx3.init()
-voice_enabled = False  # Voice is off by default
-session_data = {"waiting_for_message": False, "agent_email": "", "customer_email": ""}
+voice_enabled = False
+session_data = {
+    "waiting_for_message": False,
+    "customer_email": "",
+    "customer_name": "",
+    "last_message_time": time.time(),  # Track last message timestamp
+    "team_member_emails": ["team1@business.com", "team2@business.com"],  # List of team members
+    "welcome_displayed": False,  # Track if welcome message has been displayed
+}
 
-# Configure logging
+# Configure Logging
 logging.basicConfig(filename="assistbot_error.log", level=logging.DEBUG)
 
-# FAQs and Order Tracking
+# FAQs and Order Tracking Data
 faqs = {
     "return policy": "You can return items within 30 days.",
-    "support hours": "9 AM to 5 PM, Monday to Friday.",
+    "support hours": "Our support is available from 9 AM to 5 PM, Monday to Friday.",
 }
 order_tracking = {
     "123": "Shipped",
     "124": "Processing",
 }
 
-# Handoff Trigger Keywords
-handoff_triggers = ["human", "agent", "talk to human", "talk to agent", "speak to human", "speak to agent"]
+# File to store unresolved issues (simple database alternative)
+MESSAGE_STORAGE_FILE = "unresolved_issues.json"
 
-# Function to Send Email to Business Owner
-def send_handoff_email(user_message, customer_email):
-    business_email = os.getenv("BUSINESS_OWNER_EMAIL")  # The email where customer service requests go
+# Initialize the unresolved issues storage file
+if not os.path.exists(MESSAGE_STORAGE_FILE):
+    with open(MESSAGE_STORAGE_FILE, "w") as f:
+        json.dump([], f)
 
-    try:
-        subject = "Live Agent Request from Customer"
-        body = f"Customer Email: {customer_email}\n\nMessage: {user_message}\n\nPlease respond promptly."
-        msg = MIMEMultipart()
-        msg["From"] = EMAIL_USERNAME
-        msg["To"] = business_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
+# Function to Save Issues to File
+def save_issue_to_file(customer_name, customer_email, message):
+    issue = {
+        "name": customer_name,
+        "email": customer_email,
+        "message": message,
+        "timestamp": time.time(),
+    }
+    with open(MESSAGE_STORAGE_FILE, "r+") as f:
+        data = json.load(f)
+        data.append(issue)
+        f.seek(0)
+        json.dump(data, f)
 
-        server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
-        server.starttls()
-        server.login(EMAIL_USERNAME, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_USERNAME, business_email, msg.as_string())
-        server.quit()
+# Background Task to Check Inactivity
+def check_inactivity():
+    while True:
+        time.sleep(10)  # Runs every 10 seconds
+        if time.time() - session_data["last_message_time"] >= 300:  # 5 minutes (300 seconds)
+            if not session_data["waiting_for_message"]:
+                session_data["waiting_for_message"] = True
+                print("Chatbot: Did I resolve your issue? (yes/no)")
 
-        logging.info(f"Email sent to agent: {business_email}")
-        return True
-    except Exception as e:
-        logging.error(f"Error sending email: {e}")
-        return False
+# Start background thread for inactivity tracking
+t = threading.Thread(target=check_inactivity, daemon=True)
+t.start()
 
-# Generate Bot Response
+# Function to Generate Bot Response
 def generate_response(user_message):
     global session_data
 
-    # Check for Handoff Keywords
-    if any(trigger in user_message.lower() for trigger in handoff_triggers):
+    # Update last message time
+    session_data["last_message_time"] = time.time()
+
+    # "Did I resolve your issue?" Logic
+    if "did i resolve your issue" in user_message.lower():
+        return "Would you like me to message the conversation to a team member? (yes/no)"
+
+    if user_message.lower() == "no":
         session_data["waiting_for_message"] = True
-        return "Sure! Please enter your email so an agent can contact you."
+        return "Okay, please type your message for a team member."
 
-    # Capture Customer Email for Handoff
-    if session_data["waiting_for_message"] and "@" in user_message:
-        session_data["customer_email"] = user_message.strip()
-        return "Got it! Now please type your message for the agent."
+    if user_message.lower() == "yes":
+        return "Glad I could help! Is there anything else I can assist you with?"
 
-    # Handoff Message Logic
-    if session_data["waiting_for_message"] and session_data["customer_email"]:
-        sent = send_handoff_email(user_message, session_data["customer_email"])
+    if session_data["waiting_for_message"]:
+        save_issue_to_file(
+            session_data.get("customer_name", "Unknown"),
+            session_data.get("customer_email", "N/A"),
+            user_message,
+        )
         session_data["waiting_for_message"] = False
-        return "Your message has been sent to the agent." if sent else "Failed to send your message."
+        return "Your message has been saved for the team member. They will respond shortly."
 
     # Order Tracking
     if "order status" in user_message.lower():
@@ -113,26 +128,22 @@ def chat():
     data = request.json
     return jsonify({"response": generate_response(data["message"])})
 
-# Terminal Chat
-def terminal_chat():
-    print("👋 Hi! I'm AssistBot. How can I assist you today?")
-    while True:
-        user_message = input("You: ")
-        if user_message.lower() in ["exit", "quit"]:
-            print("Goodbye!")
-            break
-        response = generate_response(user_message)
-        print(f"AssistBot: {response}")
-
 # Run Chatbot
 if __name__ == "__main__":
-    print("👋 Welcome to AssistBot!")
-    print("🎉 Server starting...")
+    print("\U0001F44B Welcome to AssistBot!")
+    print("\U0001F389 Server starting...")
     mode = input("Type '1' for terminal testing or '2' to host as a server: ")
     if mode == "1":
-        terminal_chat()
+        print("AssistBot: Welcome to AssistBot. How can I help you today?")
+        session_data["welcome_displayed"] = True  # Ensure welcome is shown only once
+        while True:
+            user_message = input("You: ")
+            if user_message.lower() in ["exit", "quit"]:
+                print("Goodbye!")
+                break
+            print(f"AssistBot: {generate_response(user_message)}")
     elif mode == "2":
-        app.run(host="0.0.0.0", port=8080)  # Ensure it runs on Render
+        app.run(host="0.0.0.0", port=8080)  # Ensure it runs on a hosting platform.
 
 
 
