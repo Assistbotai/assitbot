@@ -25,8 +25,8 @@ session_data = {
     "welcome_displayed": False,
 }
 
-# Configure Logging
-logging.basicConfig(filename="assistbot_error.log", level=logging.DEBUG)
+# ✅ FIXED: Configure Logging (Railway-friendly path)
+logging.basicConfig(filename="./assistbot_error.log", level=logging.DEBUG)
 
 # FAQs and Order Tracking Data
 faqs = {
