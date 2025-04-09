@@ -25,8 +25,8 @@ session_data = {
     "welcome_displayed": False,
 }
 
-# ✅ FIXED: Configure Logging (Railway-friendly path)
-logging.basicConfig(filename="./assistbot_error.log", level=logging.DEBUG)
+# ✅ Console Logging (No file writing – Railway-safe)
+logging.basicConfig(level=logging.DEBUG)
 
 # FAQs and Order Tracking Data
 faqs = {
@@ -89,8 +89,10 @@ def generate_response(user_message):
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful assistant."},
-                      {"role": "user", "content": user_message}],
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": user_message},
+            ],
         )["choices"][0]["message"]["content"]
         return response
     except Exception as e:
@@ -107,6 +109,7 @@ def chat():
 if __name__ == "__main__":
     print("Starting in server mode...")
     app.run(host="0.0.0.0", port=8080)
+
 
 
 
