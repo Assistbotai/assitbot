@@ -3,8 +3,6 @@ import openai
 import logging
 import pyttsx3
 import time
-import threading
-import json
 from flask import Flask, request, jsonify
 
 # Load API Key from Environment Variables
@@ -16,6 +14,8 @@ app = Flask(__name__)
 # Text-to-Speech Setup
 engine = pyttsx3.init()
 voice_enabled = False
+
+# Session data and in-memory storage
 session_data = {
     "waiting_for_message": False,
     "customer_email": "",
@@ -24,11 +24,12 @@ session_data = {
     "team_member_emails": ["team1@business.com", "team2@business.com"],
     "welcome_displayed": False,
 }
+unresolved_issues = []  # ⬅️ No file – stored in RAM
 
-# ✅ Console Logging (No file writing – Railway-safe)
+# Console logging only
 logging.basicConfig(level=logging.DEBUG)
 
-# FAQs and Order Tracking Data
+# FAQs and Order Tracking
 faqs = {
     "return policy": "You can return items within 30 days.",
     "support hours": "Our support is available from 9 AM to 5 PM, Monday to Friday.",
@@ -38,29 +39,16 @@ order_tracking = {
     "124": "Processing",
 }
 
-# File to store unresolved issues
-MESSAGE_STORAGE_FILE = "unresolved_issues.json"
-
-# Initialize the unresolved issues storage file
-if not os.path.exists(MESSAGE_STORAGE_FILE):
-    with open(MESSAGE_STORAGE_FILE, "w") as f:
-        json.dump([], f)
-
-# Function to Save Issues to File
-def save_issue_to_file(customer_name, customer_email, message):
-    issue = {
+# Function to Save Issue (in-memory)
+def save_issue_to_memory(customer_name, customer_email, message):
+    unresolved_issues.append({
         "name": customer_name,
         "email": customer_email,
         "message": message,
         "timestamp": time.time(),
-    }
-    with open(MESSAGE_STORAGE_FILE, "r+") as f:
-        data = json.load(f)
-        data.append(issue)
-        f.seek(0)
-        json.dump(data, f)
+    })
 
-# Function to Generate Bot Response
+# Generate Bot Response
 def generate_response(user_message):
     global session_data
     session_data["last_message_time"] = time.time()
@@ -73,7 +61,7 @@ def generate_response(user_message):
     if user_message.lower() == "yes":
         return "Glad I could help! Is there anything else I can assist you with?"
     if session_data["waiting_for_message"]:
-        save_issue_to_file(
+        save_issue_to_memory(
             session_data.get("customer_name", "Unknown"),
             session_data.get("customer_email", "N/A"),
             user_message,
@@ -105,10 +93,11 @@ def chat():
     data = request.json
     return jsonify({"response": generate_response(data["message"])})
 
-# Run Chatbot
+# Run Server
 if __name__ == "__main__":
     print("Starting in server mode...")
     app.run(host="0.0.0.0", port=8080)
+
 
 
 
