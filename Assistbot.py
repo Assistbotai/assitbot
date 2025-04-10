@@ -6,7 +6,8 @@ import time
 from flask import Flask, request, jsonify
 
 # Load API Key from Environment Variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
+print("API Key Loaded:", bool(openai.api_key))
+
 
 # Flask App Initialization
 app = Flask(__name__)
