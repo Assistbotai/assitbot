@@ -1,4 +1,4 @@
-openai
+openai==0.28
 pyttsx3
 requests
 gunicorn
