@@ -1,3 +1,4 @@
+print("Running AssistBot Flask App")
 import os
 import openai
 import logging
