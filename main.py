@@ -2,20 +2,14 @@ print("Running AssistBot Flask App")
 import os
 import openai
 import logging
-import pyttsx3
 import time
 from flask import Flask, request, jsonify
 
 # Load API Key from Environment Variables
 print("API Key Loaded:", bool(openai.api_key))
 
-
 # Flask App Initialization
 app = Flask(__name__)
-
-# Text-to-Speech Setup
-engine = pyttsx3.init()
-voice_enabled = False
 
 # Session data and in-memory storage
 session_data = {
@@ -99,4 +93,5 @@ def chat():
 if __name__ == "__main__":
     print("Starting in server mode...")
     app.run(host="0.0.0.0", port=8080, debug=False)
+
 
